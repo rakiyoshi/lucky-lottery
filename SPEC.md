@@ -7,7 +7,7 @@
 - 利用者: 主に開発者の子供1人
 - 配信方式: 静的 HTML / CSS / JavaScript
 - バックエンド、DB、ユーザー登録、課金、アクセス解析は不要
-- GitHub でソースコードを管理し、Cloudflare Workers Builds の GitHub 連携から Workers Static Assets にデプロイ
+- GitHub でソースコードを管理し、Cloudflare Pages の GitHub 連携から静的サイトをデプロイ
 - 既に所有している独自ドメインのサブドメインを利用可能
 - 目標ランニングコスト: 月額0円（既存ドメインの維持費は除く）
 
@@ -19,11 +19,11 @@
 | UI | Vanilla TypeScript + HTML + CSS（React 等のフレームワークなし） |
 | ビルド | TypeScript コンパイル + HTML/CSS/画像/音声のコピー。Vite は初期導入しない |
 | モジュール | ブラウザネイティブの ES Modules |
-| ホスティング | Cloudflare Workers Static Assets（実行用 Worker コードなし） |
+| ホスティング | Cloudflare Pages（静的ファイルのみ） |
 | SCM | GitHub |
-| CI/CD | Cloudflare Workers Builds（GitHub 連携） |
+| CI/CD | Cloudflare Pages（GitHub 連携） |
 | 認証・永続化 | なし |
-| DNS/HTTPS | Cloudflare + 所有ドメイン |
+| DNS/HTTPS | Route 53 + Cloudflare Pages + 所有ドメイン |
 
 ### 技術上の留意点
 
@@ -97,7 +97,7 @@ card-game/
 - 出力先は `dist/`。HTML/CSS と静的アセットは `dist/` 直下、JS は `dist/js/` に配置する。
 - `dist/` は生成物として `.gitignore` に追加する。
 - `index.html` は `<script type="module" src="/js/main.js"></script>` で読み込む。
-- ソースツリー、テスト設定、ビルドのコピーコマンドは OS 非依存性を重視して Codex が整合する形に仕上げる。CI は Workers Builds の Linux 環境を利用する。
+- ソースツリー、テスト設定、ビルドのコピーコマンドは OS 非依存性を重視して Codex が整合する形に仕上げる。CI は Pages の Linux 環境を利用する。
 
 ## 6. ビルドとローカル開発
 
@@ -114,9 +114,7 @@ card-game/
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "card-game",
   "compatibility_date": "2026-11-01",
-  "assets": {
-    "directory": "./dist"
-  }
+  "pages_build_output_dir": "./dist"
 }
 ```
 
@@ -124,28 +122,27 @@ card-game/
 
 ## 7. CI/CD
 
-- GitHub Actions は使用せず、Cloudflare Workers Builds の GitHub 連携を利用する。
-- 本番ブランチは `main`。それ以外の同一リポジトリのブランチは Preview Builds を有効にし、プレビュー URL を PR に投稿する。
-- Build command は `npm ci && npm run check`。`check` は型チェック → 単体テスト → ビルドを順に実行し、失敗時はデプロイしない。
-- 本番 Deploy command は `npm run deploy`、Preview command は `npm run preview`（`wrangler preview`）。
-- Build variable `SKIP_DEPENDENCY_INSTALL=1` で自動インストールを停止し、lockfile を使う `npm ci` に統一する。
-- Node.js は 24.22.2 に固定する。バージョンファイルと Build variable `NODE_VERSION` を一致させる。
-- GitHub Secrets / Variables に Cloudflare トークンやアカウント ID を置かない。Cloudflare 内部では既定の自動生成ビルド用 API Token を使用する。
-- GitHub App のアクセス対象はこのリポジトリに限定する。
-- 静的アセットのみのプレビューを明示するため `wrangler.jsonc` に `previews: {}` を設定する。
-- 初回連携、ビルド設定、Custom Domain は所有者が管理画面で行う。手順と初回 main に実装が必要な点は README に記載する。
-- 配信元は Workers Builds に統一し、二重デプロイを避ける。
-- fork の PR の自動ビルドは受け入れ条件に含めず、同一リポジトリの作業ブランチを利用する。
-- 必要なら Cloudflare のチェックを GitHub の main 保護ルールで必須にする。
+- GitHub Actions / Workers Builds は使用せず、Cloudflare Pages の GitHub 連携を使用する。
+- `main` への push は本番配信。それ以外の作業ブランチは Preview deployments を有効にして PR で確認する。
+- Build command: `npm ci && npm run check`。型チェック → テスト → ビルドに成功した場合のみ `dist/` を配信する。
+- Framework preset: None、Root directory: リポジトリ直下、Build output directory: `dist`。
+- 本番・プレビュー両方の環境変数に `SKIP_DEPENDENCY_INSTALL=1` と `NODE_VERSION=24.22.2` を設定する。
+- GitHub に Cloudflare API Token / Account ID を保存しない。
+- `wrangler.jsonc` は `pages_build_output_dir: "./dist"` を設定し、ローカル開発は `wrangler pages dev dist` を使う。
+- Pages に Workers の Deploy command / Preview command は設定しない。
+- 旧 Worker の Git 連携は所有者が解除し、配信元を Pages に統一する。
+- 必要なら GitHub の main 保護ルールで Cloudflare のチェックを必須にする。
 
-## 8. Cloudflare / ドメイン
+## 8. Cloudflare Pages / ドメイン
 
-- Cloudflare Workers Static Assets で `dist/` を配信する。
-- 所有ドメインのサブドメイン（例: `game.example.com`）をカスタムドメインとして設定する。実際のドメイン名は未定。
-- TLS/HTTPS を有効化する（Cloudflare による終端）。
-- 静的コンテンツのみのため、Worker の動的コード、KV、D1、R2 などは不要。
-- 初期段階で独自の長期キャッシュ制御を追加しない。Cloudflare の標準の更新・再検証動作を使用する。
-- 認証・IP 制限は不要。URL を知っていれば誰でもアクセス可能である点を許容する。
+- 本番 URL: `https://lucky-lottery.aky-lab.net/`。
+- `aky-lab.net` の DNS は Route 53 で管理する。Cloudflare へのネームサーバー変更は不要。
+- Pages の Custom domains にサブドメインを登録した後、Route 53 に Pages の実際の `.pages.dev` ホスト名を宛先とする CNAME を登録する。
+- TLS/HTTPS は Cloudflare が終端する。
+- 動的 Worker、Pages Functions、KV、D1、R2 は不要。
+- 独自の長期キャッシュ制御は追加しない。
+- URL を知っていれば誰でもアクセス可能である点を許容する。
+- Cloudflare の無料枠を利用する。Pages Free のビルドは月500回（2026-11-02確認）。既存ドメイン・Route 53 の費用は別扱い。
 
 ## 9. テスト / 受け入れ条件
 
@@ -188,7 +185,7 @@ PWA を導入する場合は特に Service Worker のキャッシュ更新によ
 2. 実装時点の TypeScript 7 の入手可能性を確認し、安定したパッケージを選ぶ（安定版が未提供ならその理由を README に記載する）。
 3. フレームワークやバンドラーを無理に追加しない。
 4. 抽選ロジックは DOM 操作から分離し、テスト可能にする。
-5. Cloudflare Workers Builds 向けの検証コマンドとプレビュー設定を実装する。GitHub 連携・Builds・ドメインなど、所有者側の設定手順を README に記載する。
+5. Cloudflare Pages 向けの検証コマンドと配信設定を実装する。GitHub 連携・Pages・Route 53 のドメインなど、所有者側の設定手順を README に記載する。
 6. 型チェック、テスト、ビルドを実行し、成功を確認する。
 7. 作業の最後に変更ファイル、確認したコマンド、未設定の外部リソースを簡潔に報告する。
 

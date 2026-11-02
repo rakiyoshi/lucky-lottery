@@ -6,7 +6,7 @@ Vanilla TypeScript / HTML / CSS の静的サイトです。バックエンド、
 
 ## 開発
 
-Node.js **24.22.2** を使用します（`.node-version` / `.nvmrc` / Workers Builds で固定）。
+Node.js **24.22.2** を使用します（`.node-version` / `.nvmrc` / Pages で固定）。
 
 ```sh
 npm ci
@@ -31,66 +31,65 @@ npm run dev
 - `public/`: 日本語画面とスマートフォン向け2列レイアウト。
 - `scripts/build.mjs`: OS に依存しないビルド。
 - `test/game.test.mjs`: 全位置、当たりが1枚、連打、再抽選、境界値。
-- `npm run check`: 型チェック → 単体テスト → ビルド。Workers Builds 共通の検証コマンド。
-- `wrangler.jsonc`: 実行用 Worker コードなしの Static Assets 設定。
+- `npm run check`: 型チェック → 単体テスト → ビルド。Pages 共通の検証コマンド。
+- `wrangler.jsonc`: Pages の出力先とローカル開発設定。
 
-## Cloudflare Workers Builds の初期設定（所有者が実施）
+## 配信構成: Cloudflare Pages + Route 53
 
-GitHub Actions は使わず、Cloudflare が GitHub からコードを取得し、検証後にプレビューまたは本番を配信します。GitHub Secrets の `CLOUDFLARE_API_TOKEN` と Variable `CLOUDFLARE_ACCOUNT_ID` は不要です。Cloudflare 内部では自動生成されるビルド用 API Token を使うため、認証情報が存在しなくなる方式ではありません。トークンを自分でコピー・保管する必要はありません。
+本番: **https://lucky-lottery.aky-lab.net/**
 
-### 1. GitHub と接続する
+GitHub の `main` への push で Pages が検証・ビルドし、本番へ自動配信します。作業ブランチは Pages のプレビュー配信を使い、PR で確認します。GitHub Actions、Workers Builds、Pages Functions は使用しません。GitHub に Cloudflare の API Token / Account ID を保存する必要はありません。
 
-初期状態の `main` には SPEC.md しかないため、まずこの実装 PR をマージしてから接続すると初回ビルドが成功します。接続前の PR にはプレビューは作成されません。初回接続後、次の作業ブランチへの push から自動プレビューを利用できます。
+### Pages の設定
 
-1. [Cloudflare ダッシュボード](https://dash.cloudflare.com/) → **Workers & Pages** → **Create application** → **GitHub** を選びます。Pages ではなく Worker を作成します。
-2. GitHub の認可画面で Cloudflare GitHub App を連携し、対象リポジトリを **rakiyoshi/lucky-lottery のみ**許可します。既に連携済みなら対象リポジトリへのアクセスを追加します。
-3. リポジトリ `rakiyoshi/lucky-lottery` を選び、Worker 名を **lucky-lottery** にします。`wrangler.jsonc` の `name` と一致させます。
-4. 以下の設定を入力し、**Save and Deploy** を選びます。初期画面にない項目は作成後の **Settings → Builds**（画面によって Build）で設定して再ビルドしてください。
+新規作成する場合は Workers & Pages → Create application → Pages（画面によっては Looking to deploy Pages? → Get started）→ Connect to Git で `rakiyoshi/lucky-lottery` を接続します。既存プロジェクトは Settings の Builds & deployments で設定を確認します。
 
 | 項目 | 値 |
 |---|---|
 | Production branch | `main` |
-| Root directory | リポジトリ直下（空欄または `/`） |
+| Framework preset | `None` |
+| Root directory | リポジトリ直下（空欄） |
 | Build command | `npm ci && npm run check` |
-| Deploy command | `npm run deploy` |
-| Preview command | `npm run preview` |
-| Enable Preview Builds | 有効 |
-| Build variable: `SKIP_DEPENDENCY_INSTALL` | `1` |
-| Build variable: `NODE_VERSION` | `24.22.2` |
-| API token | Cloudflare の自動生成（既定） |
+| Build output directory | `dist` |
+| 環境変数 `NODE_VERSION` | `24.22.2` |
+| 環境変数 `SKIP_DEPENDENCY_INSTALL` | `1` |
+| Preview deployments | 作業ブランチで有効 |
 
-Build variables は **Settings → Builds → Build Variables and Secrets** に設定します。本番とプレビューの両方で適用してください。`SKIP_DEPENDENCY_INSTALL=1` で自動インストールを止め、Build command 冒頭の `npm ci` に統一します。Node.js はバージョンファイルでも固定済みです。
+環境変数は Production / Preview の両方に設定します。`SKIP_DEPENDENCY_INSTALL=1` は自動インストールを停止し、Build command 冒頭の `npm ci` で lockfile に合わせます。`check` は型チェック → テスト → ビルドを順に実行し、失敗すると配信されません。Pages に Workers 用の Deploy command / Preview command は設定しません。
 
-既存 Worker がある場合は、新規作成せず対象 Worker の **Settings → Builds → Connect** から同じリポジトリを接続します。旧方式のプレビューを使用している場合のみ **Set up Worker Previews** を実施します。この切り替えは元に戻せないため、新規作成時には不要です。
+`wrangler.jsonc` は Pages 用の `pages_build_output_dir` を指定しています。ローカルでは `npm run dev` がビルド後に `wrangler pages dev dist` を起動します。ソース変更後は再起動してください。クラウドの設定・ドメイン・環境変数は管理画面で管理します。
 
-### 2. プレビューと本番を確認する
+### Route 53 のサブドメインと HTTPS
 
-- 作業ブランチへの push: `npm ci` → 型チェック → 単体テスト → ビルド → `wrangler preview`。
-- 本番 `main` への push: 同じ検証 → `wrangler deploy`。
-- チェック失敗時は後続のデプロイを行いません。
-- Cloudflare の **Deployments / Build history** でインストール・検証ログを確認します。
-- GitHub の PR に Cloudflare のチェックとプレビュー URL が表示されます。同じブランチへの push でプレビューが更新されます。本番 URL は `main` の配信を維持します。
-- `wrangler.jsonc` の `previews: {}` は、静的アセットのみを使うプレビューの明示設定です。プレビュー用の DB や Secrets は不要です。
-- PR マージ前に検証成功を必須にしたい場合、最初のチェック実行後、GitHub の Settings → Rules → Rulesets で main に Cloudflare が報告した実際のチェック名を必須チェックとして設定します。
+`aky-lab.net` の DNS は Route 53 で管理します。Cloudflare へのネームサーバー移行やドメイン購入は不要です。
 
-fork からの PR については同一リポジトリのブランチ push と同じ自動実行を前提にしません。個人開発ではこのリポジトリ内に作業ブランチを作成します。
+1. Pages プロジェクト → Custom domains → Set up a domain で `lucky-lottery.aky-lab.net` を登録します（現在は設定済み）。
+2. Route 53 の `aky-lab.net` パブリックホストゾーンに CNAME を作成します。
 
-### 3. 独自ドメインを設定する
+| 項目 | 値 |
+|---|---|
+| レコード名 | `lucky-lottery.aky-lab.net` |
+| 種類 | `CNAME` |
+| 宛先 | Pages 管理画面に表示された実際の `<プロジェクト名>.pages.dev` |
+| TTL | 例: `300` |
 
-1. 所有ドメインが同じ Cloudflare アカウントで有効になっていることを確認します。
-2. 対象 Worker → **Settings → Domains & Routes → Add → Custom Domain** を選びます。
-3. 希望のサブドメイン（例: `game.example.com`）を入力し、表示される DNS 設定を確認して追加します。実際のドメイン名は未設定です。
-4. 証明書が有効になったら HTTPS URL を開き、ゲームが動くことを確認します。
+3. Pages でドメインと証明書が有効になったら本番 HTTPS URL を確認します。
 
-初期確認は Cloudflare が発行する `workers.dev` URL でも行えます。独自ドメインは本番 Worker に設定します。
+Pages 側でのドメイン登録を先に実施してください。CNAME だけでは正しく配信されません。上記の宛先はプレースホルダーであり、Pages の実際のホスト名を使います。既に配信できている DNS を変更する必要はありません。
 
-### 運用と料金
+### 日常の更新
 
-[Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/) の GitHub 連携のみを配信元にします。別の GitHub Actions デプロイや Deploy Hook は追加しません。古い GitHub Secrets / Variable を登録済みなら、他用途に使っていないことを確認して削除できます。
+- 作業ブランチへの push → 検証・ビルド → Pages のプレビュー URL。
+- PR の Cloudflare チェックとプレビューで動作確認 → main にマージ → 本番を更新。
+- 検証ログは Pages の Deployments で確認します。必要なら GitHub の main 保護ルールで Cloudflare の実際のチェック名を必須にします。
+- 古い Worker の自動ビルド連携が残っている場合は、その Worker の Settings → Builds で接続を解除して二重配信を避けます。旧 Worker の削除は任意で、Pages に影響しないことを確認して所有者が行います。
+- URL を知っていれば誰でもアクセス可能です。音声、広告、外部通信、永続化、独自の長期キャッシュ設定はありません。
 
-[無料プランのビルド枠](https://developers.cloudflare.com/workers/ci-cd/builds/limits-and-pricing/)は月3,000分・同時実行1件（2026-11-02確認）です。今回の規模では無料枠内の運用を想定します。[Static Assets](https://developers.cloudflare.com/workers/static-assets/) で `dist/` を配信し、動的 Worker、KV、D1、R2 は作りません。独自の長期キャッシュは設定しません。URL を知っていれば誰でもアクセスできます。
+### 料金
 
-設定根拠: [ビルド設定・自動生成トークン](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)、[Node.js 固定・自動インストール無効化](https://developers.cloudflare.com/workers/ci-cd/builds/build-image/)、[プレビュー設定](https://developers.cloudflare.com/workers/previews/configuration/)。
+2026-11-02 の公式情報では、Pages / Workers Static Assets ともに静的アセットへのリクエストは無料・無制限です。今回のアプリは静的ファイルのみなので Cloudflare の無料枠で運用できます。Pages Free のビルドは月500回・同時1件、Workers Builds Free は月3,000分・同時1件と、ビルド枠の数え方が異なります。Functions や動的 Worker を追加した場合は別途 Workers の実行料金・制限が適用されます。既存ドメインの維持費・Route 53 の料金はこの比較に含みません。
+
+公式資料: [Pages の Git 連携](https://developers.cloudflare.com/pages/get-started/git-integration/)、[ビルド環境](https://developers.cloudflare.com/pages/configuration/build-image/)、[外部 DNS のサブドメイン](https://developers.cloudflare.com/pages/configuration/custom-domains/)、[Pages の料金](https://developers.cloudflare.com/pages/functions/pricing/)、[Pages の無料枠](https://developers.cloudflare.com/pages/platform/limits/)、[Workers Static Assets の料金](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/)、[Workers Builds の無料枠](https://developers.cloudflare.com/workers/ci-cd/builds/limits-and-pricing/)。
 
 ## 受け入れ確認
 
@@ -100,13 +99,13 @@ fork からの PR については同一リポジトリのブランチ push と�
 - 「もういっかい！」で再び選択でき、再読み込みでも正常に開始する。
 - Tab / Enter / Space で操作でき、結果の見出しと再開後のカードにフォーカスが移る。ズームを無効化しない。
 - 開発者ツールで JavaScript エラーやアセットの404がない。
-- GitHub 連携 / Workers Builds / Custom Domain 設定後、PR チェックと main のデプロイが成功し、HTTPS URL が最新になる。
+- GitHub 連携 / Pages / Custom Domain 設定後、PR チェックと main のデプロイが成功し、HTTPS URL が最新になる。
 
-Cloudflare の GitHub 連携、Builds とドメイン設定、実機確認および実際のクラウドビルド実行は別途必要です。
+Pages と Route 53 のドメイン設定は所有者が実施済みです。管理画面のビルド設定とスマホ実機は別途確認してください。
 
 ## 今回の検証結果
 
 - Node.js 24.22.2 で `npm ci`、`npm run typecheck`、`npm test`（4件）、`npm run build` が成功。
-- `wrangler deploy --dry-run` で静的アセット設定の検証に成功。実際のアップロードは未実施。
-- Chromium の320×568タッチ画面でカード4枚、横スクロールなし、当たり・はずれ、連打防止、再プレイ、キーボード、フォーカス、再読み込みを確認。JavaScript エラーと404なし。
-- iOS Safari / Android Chrome の実機、Workers Builds と本番 HTTPS は未確認。WebKit のローカル実行はホストの共有ライブラリ不足により未実施。
+- Pages 移行後も `npm ci` と `npm run check` が成功。
+- 本番 `https://lucky-lottery.aky-lab.net/` を Chromium の320×568タッチ画面で検証。カード4枚、横スクロールなし、当たり・はずれ、連打防止、再プレイ、キーボード、フォーカス、再読み込みを確認。JavaScript エラーと404なし。当たり・はずれの確認ではブラウザ内の乱数を固定し、サーバーや配信ファイルは変更していません。
+- iOS Safari / Android Chrome の実機、Pages の管理画面設定は未確認。WebKit のローカル実行はホストの共有ライブラリ不足により未実施。

@@ -10,10 +10,8 @@
     "typecheck": "tsc --noEmit",
     "build": "node scripts/build.mjs",
     "test": "node --test test/*.test.mjs",
-    "dev": "npm run build && wrangler dev",
-    "deploy": "wrangler deploy",
-    "check": "npm run typecheck && npm test && npm run build",
-    "preview": "wrangler preview"
+    "dev": "npm run build && wrangler pages dev dist",
+    "check": "npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
     "typescript": "7.0.2",

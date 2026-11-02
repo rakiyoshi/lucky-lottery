@@ -2,8 +2,5 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "lucky-lottery",
   "compatibility_date": "2026-11-01",
-  "assets": {
-    "directory": "./dist"
-  },
-  "previews": {}
+  "pages_build_output_dir": "./dist"
 }
