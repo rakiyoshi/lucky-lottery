@@ -7,7 +7,7 @@
 - 利用者: 主に開発者の子供1人
 - 配信方式: 静的 HTML / CSS / JavaScript
 - バックエンド、DB、ユーザー登録、課金、アクセス解析は不要
-- GitHub でソースコードを管理し、GitHub Actions から Cloudflare Workers Static Assets にデプロイ
+- GitHub でソースコードを管理し、Cloudflare Workers Builds の GitHub 連携から Workers Static Assets にデプロイ
 - 既に所有している独自ドメインのサブドメインを利用可能
 - 目標ランニングコスト: 月額0円（既存ドメインの維持費は除く）
 
@@ -21,7 +21,7 @@
 | モジュール | ブラウザネイティブの ES Modules |
 | ホスティング | Cloudflare Workers Static Assets（実行用 Worker コードなし） |
 | SCM | GitHub |
-| CI/CD | GitHub Actions |
+| CI/CD | Cloudflare Workers Builds（GitHub 連携） |
 | 認証・永続化 | なし |
 | DNS/HTTPS | Cloudflare + 所有ドメイン |
 
@@ -77,9 +77,6 @@
 
 ```text
 card-game/
-├── .github/
-│   └── workflows/
-│       └── deploy.yml
 ├── src/
 │   ├── main.ts       # DOM とイベント処理、画面表示
 │   └── game.ts       # 抽選と当たり・はずれ判定の純粋ロジック
@@ -100,7 +97,7 @@ card-game/
 - 出力先は `dist/`。HTML/CSS と静的アセットは `dist/` 直下、JS は `dist/js/` に配置する。
 - `dist/` は生成物として `.gitignore` に追加する。
 - `index.html` は `<script type="module" src="/js/main.js"></script>` で読み込む。
-- ソースツリー、テスト設定、ビルドのコピーコマンドは OS 非依存性を重視して Codex が整合する形に仕上げる。CI は Ubuntu を想定する。
+- ソースツリー、テスト設定、ビルドのコピーコマンドは OS 非依存性を重視して Codex が整合する形に仕上げる。CI は Workers Builds の Linux 環境を利用する。
 
 ## 6. ビルドとローカル開発
 
@@ -127,17 +124,19 @@ card-game/
 
 ## 7. CI/CD
 
-- `pull_request`: 依存インストール → 型チェック → テスト → ビルド。デプロイしない。
-- `push` to `main`: 同じチェックを通した後、Cloudflare にデプロイ。
-- `actions/checkout`、`actions/setup-node`、`cloudflare/wrangler-action` 等を使用。導入時点でサポートされるバージョンを選び、可能なら Actions を commit SHA に pin する。
-- `permissions: contents: read` を基本とする。
-- Node.js バージョンを固定し、依存インストールには `npm ci` を使う。
-- GitHub Secrets: `CLOUDFLARE_API_TOKEN`。
-- GitHub Variables（または Secret）: `CLOUDFLARE_ACCOUNT_ID`。
-- API Token は必要最小限の Workers デプロイ権限に絞る。初期 Worker 作成と Custom Domain 設定は手動で行い、CI に DNS 管理権限は与えない。
-- PR や fork からの実行で API Token が利用されないようにする。
-- 同一ブランチの古い実行による競合デプロイを避けるため concurrency を設定する。
-- Cloudflare の GitHub 自動デプロイを別途有効化して二重デプロイにならないようにする。
+- GitHub Actions は使用せず、Cloudflare Workers Builds の GitHub 連携を利用する。
+- 本番ブランチは `main`。それ以外の同一リポジトリのブランチは Preview Builds を有効にし、プレビュー URL を PR に投稿する。
+- Build command は `npm ci && npm run check`。`check` は型チェック → 単体テスト → ビルドを順に実行し、失敗時はデプロイしない。
+- 本番 Deploy command は `npm run deploy`、Preview command は `npm run preview`（`wrangler preview`）。
+- Build variable `SKIP_DEPENDENCY_INSTALL=1` で自動インストールを停止し、lockfile を使う `npm ci` に統一する。
+- Node.js は 24.22.2 に固定する。バージョンファイルと Build variable `NODE_VERSION` を一致させる。
+- GitHub Secrets / Variables に Cloudflare トークンやアカウント ID を置かない。Cloudflare 内部では既定の自動生成ビルド用 API Token を使用する。
+- GitHub App のアクセス対象はこのリポジトリに限定する。
+- 静的アセットのみのプレビューを明示するため `wrangler.jsonc` に `previews: {}` を設定する。
+- 初回連携、ビルド設定、Custom Domain は所有者が管理画面で行う。手順と初回 main に実装が必要な点は README に記載する。
+- 配信元は Workers Builds に統一し、二重デプロイを避ける。
+- fork の PR の自動ビルドは受け入れ条件に含めず、同一リポジトリの作業ブランチを利用する。
+- 必要なら Cloudflare のチェックを GitHub の main 保護ルールで必須にする。
 
 ## 8. Cloudflare / ドメイン
 
@@ -163,7 +162,7 @@ card-game/
 - タップすると正しい結果が表示され、二重操作で壊れない。
 - 「もういっかい！」で初期画面に戻り、再び遊べる。
 - ブラウザ再読み込みで正常に開始できる。
-- GitHub Actions の PR チェックが通る。
+- Cloudflare の PR チェックが通り、プレビュー URL で確認できる。
 - main への push 後、Cloudflare の HTTPS URL から最新のゲームを利用できる。
 - 開発者ツール上で重大な JavaScript エラーや静的アセットの 404 がない。
 
@@ -189,7 +188,7 @@ PWA を導入する場合は特に Service Worker のキャッシュ更新によ
 2. 実装時点の TypeScript 7 の入手可能性を確認し、安定したパッケージを選ぶ（安定版が未提供ならその理由を README に記載する）。
 3. フレームワークやバンドラーを無理に追加しない。
 4. 抽選ロジックは DOM 操作から分離し、テスト可能にする。
-5. GitHub Actions と Cloudflare 設定を実装する。ただし GitHub Secrets やドメイン名など、所有者側の設定が必要な項目は README に手順を記載する。
+5. Cloudflare Workers Builds 向けの検証コマンドとプレビュー設定を実装する。GitHub 連携・Builds・ドメインなど、所有者側の設定手順を README に記載する。
 6. 型チェック、テスト、ビルドを実行し、成功を確認する。
 7. 作業の最後に変更ファイル、確認したコマンド、未設定の外部リソースを簡潔に報告する。
 

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#fff8e9">
+    <title>あたりを みつけよう！</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/style.css">
+    <script type="module" src="/js/main.js"></script>
+  </head>
+  <body>
+    <main>
+      <section id="selecting" aria-labelledby="game-title">
+        <p class="decoration" aria-hidden="true">✦</p>
+        <h1 id="game-title">あたりを<br>みつけよう！</h1>
+        <p class="instruction">カードを 1まい えらんでね</p>
+        <div id="cards" class="cards" role="group" aria-label="4まいの カード"></div>
+        <p class="hint">あたりは ひとつ。どれかな？</p>
+      </section>
+      <section id="result" class="result" aria-labelledby="result-title" hidden>
+        <div id="result-icon" class="result-icon" aria-hidden="true"></div>
+        <h1 id="result-title" tabindex="-1"></h1>
+        <p id="result-message" class="instruction"></p>
+        <button id="retry" type="button">もういっかい！ <span aria-hidden="true">↻</span></button>
+      </section>
+      <noscript>あそぶには ブラウザの JavaScript を ゆうこうにしてください。</noscript>
+    </main>
+  </body>
+</html>
